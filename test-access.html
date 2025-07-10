@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chrome Webtop Access</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .access-link {
+            display: block;
+            background-color: #4285f4;
+            color: white;
+            padding: 15px 30px;
+            text-decoration: none;
+            border-radius: 5px;
+            text-align: center;
+            font-size: 18px;
+            margin: 20px 0;
+        }
+        .access-link:hover {
+            background-color: #3367d6;
+        }
+        .info {
+            background-color: #e8f0fe;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .credentials {
+            background-color: #fff3cd;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌐 Chrome Webtop - Kasm Workspace</h1>
+        
+        <div class="info">
+            <h3>✅ Your Chrome Webtop is Ready!</h3>
+            <p>A minimal desktop environment with Google Chrome is now running in a Docker container.</p>
+        </div>
+
+        <a href="https://work-1-hefnmwebvwfojncq.prod-runtime.all-hands.dev" class="access-link" target="_blank">
+            🚀 Access Chrome Webtop
+        </a>
+
+        <div class="credentials">
+            <h3>🔐 Login Credentials</h3>
+            <p><strong>Password:</strong> password</p>
+        </div>
+
+        <div class="info">
+            <h3>📋 Features</h3>
+            <ul>
+                <li>Google Chrome browser with security policies</li>
+                <li>Minimal XFCE desktop environment</li>
+                <li>Web-based VNC access</li>
+                <li>File upload/download capabilities</li>
+                <li>Restricted file chooser for security</li>
+                <li>No desktop panel for minimal attack surface</li>
+            </ul>
+        </div>
+
+        <div class="info">
+            <h3>🛠️ Container Status</h3>
+            <p>Container ID: <code>chrome-webtop</code></p>
+            <p>Port Mapping: <code>12000:6901</code></p>
+            <p>Base Image: <code>kasmweb/core-ubuntu-jammy:develop</code></p>
+        </div>
+    </div>
+</body>
+</html>
