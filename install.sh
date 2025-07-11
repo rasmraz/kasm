@@ -61,14 +61,30 @@ install_docker() {
             gnupg \
             lsb-release
         
+        # Detect distribution
+        if [ -f /etc/debian_version ]; then
+            DISTRO="debian"
+            CODENAME=$(lsb_release -cs)
+            # Map Debian codenames to supported Docker versions
+            case "$CODENAME" in
+                "bookworm") DOCKER_CODENAME="bookworm" ;;
+                "bullseye") DOCKER_CODENAME="bullseye" ;;
+                "buster") DOCKER_CODENAME="buster" ;;
+                *) DOCKER_CODENAME="bookworm" ;;  # Default to bookworm
+            esac
+        else
+            DISTRO="ubuntu"
+            DOCKER_CODENAME=$(lsb_release -cs)
+        fi
+        
         # Add Docker's official GPG key
         sudo mkdir -p /etc/apt/keyrings
-        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+        curl -fsSL https://download.docker.com/linux/${DISTRO}/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
         
         # Set up repository
         echo \
-          "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-          $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+          "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/${DISTRO} \
+          ${DOCKER_CODENAME} stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
         
         # Install Docker Engine
         sudo apt-get update
