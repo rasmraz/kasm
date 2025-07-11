@@ -21,9 +21,10 @@ RUN apt-get update && apt-get install -y \
 RUN mkdir -p /opt/noVNC/utils/websockify && \
     wget -qO- https://github.com/novnc/noVNC/archive/v1.3.0.tar.gz | tar xz --strip 1 -C /opt/noVNC && \
     wget -qO- https://github.com/novnc/websockify/archive/v0.10.0.tar.gz | tar xz --strip 1 -C /opt/noVNC/utils/websockify && \
-    ln -s /opt/noVNC/vnc.html /opt/noVNC/index.html
+    ln -s /opt/noVNC/vnc.html /opt/noVNC/index.html && \
+    chmod +x /opt/noVNC/utils/websockify/websockify.py
 
-# Install Chrome
+# Install Google Chrome
 RUN wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add - && \
     echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list && \
     apt-get update && \
@@ -34,11 +35,12 @@ RUN wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add
 RUN useradd -m -s /bin/bash chrome && \
     echo 'chrome:password' | chpasswd
 
-# Create supervisor config
-RUN mkdir -p /var/log/supervisor
-COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+# Create supervisor log directory and set permissions
+RUN mkdir -p /var/log/supervisor && \
+    chown -R chrome:chrome /var/log/supervisor
 
-# Create startup scripts
+# Copy configuration files
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY start-vnc.sh /usr/local/bin/start-vnc.sh
 COPY start-chrome.sh /usr/local/bin/start-chrome.sh
 RUN chmod +x /usr/local/bin/start-vnc.sh /usr/local/bin/start-chrome.sh
@@ -49,7 +51,6 @@ RUN mkdir -p /home/chrome/.vnc && \
 
 EXPOSE 6901
 
-USER chrome
 WORKDIR /home/chrome
 
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

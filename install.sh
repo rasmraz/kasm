@@ -63,21 +63,34 @@ install_docker() {
         
         # Add Docker's official GPG key
         sudo mkdir -p /etc/apt/keyrings
-        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
         
-        # Set up repository
-        echo \
-          "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-          $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+        # Detect if we're on Debian or Ubuntu
+        if grep -q "debian" /etc/os-release; then
+            curl -fsSL https://download.docker.com/linux/debian/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+            # Set up repository for Debian
+            echo \
+              "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian \
+              $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+        else
+            curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+            # Set up repository for Ubuntu
+            echo \
+              "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+              $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+        fi
         
         # Install Docker Engine
         sudo apt-get update
         sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
         
-        # Add current user to docker group
-        sudo usermod -aG docker $USER
-        
-        print_warning "You may need to log out and back in for Docker group membership to take effect"
+        # Add current user to docker group (skip if running as root)
+        CURRENT_USER=$(whoami)
+        if [[ "$CURRENT_USER" != "root" && -n "$CURRENT_USER" ]]; then
+            sudo usermod -aG docker $CURRENT_USER
+            print_warning "You may need to log out and back in for Docker group membership to take effect"
+        else
+            print_status "Running as root - skipping user group modification"
+        fi
         
     elif [[ "$OSTYPE" == "darwin"* ]]; then
         print_error "Please install Docker Desktop for Mac from https://docs.docker.com/desktop/mac/install/"
@@ -92,11 +105,17 @@ install_docker() {
 start_docker() {
     if ! docker info >/dev/null 2>&1; then
         print_status "Starting Docker daemon..."
-        if command_exists systemctl; then
+        
+        # Try different methods to start Docker
+        if command_exists systemctl && systemctl is-system-running >/dev/null 2>&1; then
             sudo systemctl start docker
             sudo systemctl enable docker
         elif command_exists service; then
             sudo service docker start
+        elif command_exists dockerd; then
+            print_status "Starting Docker daemon directly..."
+            sudo dockerd >/dev/null 2>&1 &
+            sleep 5
         else
             print_error "Cannot start Docker daemon. Please start it manually."
             exit 1
@@ -157,7 +176,8 @@ RUN apt-get update && apt-get install -y \
 RUN mkdir -p /opt/noVNC/utils/websockify && \
     wget -qO- https://github.com/novnc/noVNC/archive/v1.3.0.tar.gz | tar xz --strip 1 -C /opt/noVNC && \
     wget -qO- https://github.com/novnc/websockify/archive/v0.10.0.tar.gz | tar xz --strip 1 -C /opt/noVNC/utils/websockify && \
-    ln -s /opt/noVNC/vnc.html /opt/noVNC/index.html
+    ln -s /opt/noVNC/vnc.html /opt/noVNC/index.html && \
+    chmod +x /opt/noVNC/utils/websockify/websockify.py
 
 # Install Google Chrome
 RUN wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add - && \
@@ -170,8 +190,9 @@ RUN wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add
 RUN useradd -m -s /bin/bash chrome && \
     echo 'chrome:password' | chpasswd
 
-# Create supervisor log directory
-RUN mkdir -p /var/log/supervisor
+# Create supervisor log directory and set permissions
+RUN mkdir -p /var/log/supervisor && \
+    chown -R chrome:chrome /var/log/supervisor
 
 # Copy configuration files
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
@@ -185,7 +206,6 @@ RUN mkdir -p /home/chrome/.vnc && \
 
 EXPOSE 6901
 
-USER chrome
 WORKDIR /home/chrome
 
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
@@ -199,38 +219,45 @@ create_supervisor_config() {
     cat > supervisord.conf << 'EOF'
 [supervisord]
 nodaemon=true
-user=chrome
 logfile=/var/log/supervisor/supervisord.log
 pidfile=/var/run/supervisord.pid
 
 [program:xvfb]
 command=/usr/bin/Xvfb :1 -screen 0 1024x768x24
+user=chrome
+environment=HOME="/home/chrome"
 autorestart=true
 stdout_logfile=/var/log/supervisor/xvfb.log
 stderr_logfile=/var/log/supervisor/xvfb.log
 
 [program:fluxbox]
 command=/usr/bin/fluxbox
-environment=DISPLAY=":1"
+user=chrome
+environment=DISPLAY=":1",HOME="/home/chrome"
 autorestart=true
 stdout_logfile=/var/log/supervisor/fluxbox.log
 stderr_logfile=/var/log/supervisor/fluxbox.log
 
 [program:x11vnc]
 command=/usr/local/bin/start-vnc.sh
+user=chrome
+environment=HOME="/home/chrome"
 autorestart=true
 stdout_logfile=/var/log/supervisor/x11vnc.log
 stderr_logfile=/var/log/supervisor/x11vnc.log
 
 [program:novnc]
-command=/usr/bin/python3 /opt/noVNC/utils/websockify/websockify.py --web /opt/noVNC 6901 localhost:5901
+command=/opt/noVNC/utils/websockify/websockify.py --web /opt/noVNC 6901 localhost:5901
+user=chrome
+environment=HOME="/home/chrome"
 autorestart=true
 stdout_logfile=/var/log/supervisor/novnc.log
 stderr_logfile=/var/log/supervisor/novnc.log
 
 [program:chrome]
 command=/usr/local/bin/start-chrome.sh
-environment=DISPLAY=":1"
+user=chrome
+environment=DISPLAY=":1",HOME="/home/chrome"
 autorestart=true
 stdout_logfile=/var/log/supervisor/chrome.log
 stderr_logfile=/var/log/supervisor/chrome.log
@@ -256,6 +283,14 @@ create_chrome_script() {
     cat > start-chrome.sh << 'EOF'
 #!/bin/bash
 export DISPLAY=:1
+export HOME=/home/chrome
+export USER=chrome
+
+# Create necessary directories
+mkdir -p /home/chrome/.local/share/applications
+mkdir -p /home/chrome/.config/google-chrome
+mkdir -p /home/chrome/.cache
+
 sleep 5  # Wait for X server to be ready
 google-chrome-stable \
     --no-sandbox \
@@ -268,7 +303,9 @@ google-chrome-stable \
     --disable-features=TranslateUI \
     --disable-ipc-flooding-protection \
     --window-size=1024,768 \
-    --start-maximized
+    --start-maximized \
+    --user-data-dir=/home/chrome/.config/google-chrome \
+    --crash-dumps-dir=/home/chrome/.cache
 EOF
     chmod +x start-chrome.sh
 }

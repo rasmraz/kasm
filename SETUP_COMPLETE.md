@@ -6,14 +6,14 @@ Your Chrome webtop is now running and ready to use! Here's what has been set up:
 
 ### 🐳 Docker Container
 - **Container Name**: `chrome-webtop`
-- **Image**: Built from Kasm Technologies base image
+- **Image**: `chrome-webtop-simple` (custom built)
 - **Status**: ✅ Running
 - **Port**: 12000 → 6901 (internal)
 
 ### 🌐 Access Information
-- **URL**: https://work-1-hefnmwebvwfojncq.prod-runtime.all-hands.dev
-- **Password**: `password`
-- **Protocol**: Web-based VNC
+- **URL**: http://localhost:12000
+- **Password**: No password required
+- **Protocol**: Web-based VNC via noVNC
 
 ### 📁 Project Structure
 ```
@@ -33,15 +33,11 @@ Your Chrome webtop is now running and ready to use! Here's what has been set up:
 
 ## 🚀 How to Access Your Chrome Webtop
 
-### Option 1: Direct Access
+### Direct Access
 1. Open your browser
-2. Go to: https://work-1-hefnmwebvwfojncq.prod-runtime.all-hands.dev
-3. Enter password: `password`
-4. You'll see a minimal desktop with Chrome ready to use
-
-### Option 2: Via Access Page
-1. Go to: https://work-2-hefnmwebvwfojncq.prod-runtime.all-hands.dev/test-access.html
-2. Click the "Access Chrome Webtop" button
+2. Go to: http://localhost:12000
+3. Click "Connect" in the noVNC interface
+4. You'll see a desktop with Chrome ready to use
 
 ## 🛠️ Management Commands
 
@@ -120,4 +116,4 @@ If you encounter issues:
 
 **🎉 Your Chrome webtop is ready to use!**
 
-Access it now at: https://work-1-hefnmwebvwfojncq.prod-runtime.all-hands.dev
+Access it now at: http://localhost:12000
