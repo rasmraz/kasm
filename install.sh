@@ -3,7 +3,8 @@
 # Chrome Webtop One-Command Installer
 # This script automates the complete setup of a Chrome webtop with VNC web access
 
-set -e  # Exit on any error
+# We don't use set -e because we want to handle errors gracefully
+# and continue when possible
 
 # Colors for output
 RED='\033[0;31m'
@@ -86,8 +87,12 @@ install_docker() {
         # Add current user to docker group (skip if running as root)
         CURRENT_USER=$(whoami)
         if [[ "$CURRENT_USER" != "root" && -n "$CURRENT_USER" ]]; then
-            sudo usermod -aG docker $CURRENT_USER
-            print_warning "You may need to log out and back in for Docker group membership to take effect"
+            # Try to add user to docker group, but don't fail if it doesn't work
+            if sudo usermod -aG docker $CURRENT_USER 2>/dev/null; then
+                print_warning "You may need to log out and back in for Docker group membership to take effect"
+            else
+                print_warning "Could not add user to docker group - continuing anyway"
+            fi
         else
             print_status "Running as root - skipping user group modification"
         fi
@@ -103,49 +108,75 @@ install_docker() {
 
 # Function to start Docker daemon if not running
 start_docker() {
-    if ! docker info >/dev/null 2>&1; then
-        print_status "Starting Docker daemon..."
-        
-        # Try different methods to start Docker
-        if command_exists systemctl && systemctl is-system-running >/dev/null 2>&1; then
-            sudo systemctl start docker
-            sudo systemctl enable docker
-        elif command_exists service; then
-            sudo service docker start
-        elif command_exists dockerd; then
-            print_status "Starting Docker daemon directly..."
-            sudo dockerd >/dev/null 2>&1 &
-            sleep 5
-        else
-            print_error "Cannot start Docker daemon. Please start it manually."
-            exit 1
-        fi
-        
-        # Wait for Docker to be ready
-        print_status "Waiting for Docker to be ready..."
-        for i in {1..30}; do
-            if docker info >/dev/null 2>&1; then
-                break
-            fi
-            sleep 1
-        done
-        
-        if ! docker info >/dev/null 2>&1; then
-            print_error "Docker failed to start properly"
-            exit 1
-        fi
+    # First check if Docker is already running
+    if docker info >/dev/null 2>&1; then
+        print_success "Docker is already running"
+        return 0
     fi
     
-    print_success "Docker is running"
+    print_status "Starting Docker daemon..."
+    
+    # Try different methods to start Docker
+    if command_exists systemctl && systemctl is-system-running >/dev/null 2>&1; then
+        sudo systemctl start docker || true
+        sudo systemctl enable docker || true
+    elif command_exists service; then
+        sudo service docker start || true
+    elif command_exists dockerd; then
+        print_status "Starting Docker daemon directly..."
+        sudo dockerd >/dev/null 2>&1 &
+        sleep 5
+    else
+        print_warning "Cannot start Docker daemon automatically. Trying to continue anyway..."
+    fi
+    
+    # Wait for Docker to be ready
+    print_status "Waiting for Docker to be ready..."
+    for i in {1..30}; do
+        if docker info >/dev/null 2>&1; then
+            print_success "Docker is running"
+            return 0
+        fi
+        sleep 1
+        echo -n "."
+    done
+    
+    # If we get here, Docker is still not running, but we'll try to continue
+    print_warning "Docker may not be running properly, but we'll try to continue..."
 }
 
 # Function to stop and remove existing container
 cleanup_existing() {
-    if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
-        print_status "Stopping and removing existing container: ${CONTAINER_NAME}"
-        docker stop ${CONTAINER_NAME} >/dev/null 2>&1 || true
-        docker rm ${CONTAINER_NAME} >/dev/null 2>&1 || true
+    # Check if Docker is running first
+    if ! docker info >/dev/null 2>&1; then
+        print_warning "Docker is not running, skipping container cleanup"
+        return 0
     fi
+    
+    # Try to stop and remove the container if it exists
+    if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^${CONTAINER_NAME}$"; then
+        print_status "Stopping and removing existing container: ${CONTAINER_NAME}"
+        
+        # Stop the container
+        if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^${CONTAINER_NAME}$"; then
+            print_status "Container is running, stopping it..."
+            docker stop ${CONTAINER_NAME} >/dev/null 2>&1 || print_warning "Failed to stop container"
+        fi
+        
+        # Remove the container
+        docker rm ${CONTAINER_NAME} >/dev/null 2>&1 || print_warning "Failed to remove container"
+        
+        # Verify removal
+        if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^${CONTAINER_NAME}$"; then
+            print_warning "Container could not be removed, but we'll try to continue"
+        else
+            print_success "Container removed successfully"
+        fi
+    else
+        print_status "No existing container found with name: ${CONTAINER_NAME}"
+    fi
+    
+    return 0
 }
 
 # Function to create Dockerfile
@@ -313,28 +344,63 @@ EOF
 # Function to build Docker image
 build_image() {
     print_status "Building Chrome webtop Docker image..."
-    docker build -f Dockerfile.simple -t ${IMAGE_NAME} .
-    print_success "Docker image built successfully"
+    
+    # Check if image already exists
+    if docker images --format '{{.Repository}}' | grep -q "^${IMAGE_NAME}$"; then
+        print_warning "Image ${IMAGE_NAME} already exists. Using existing image."
+        return 0
+    fi
+    
+    # Try to build the image
+    if docker build -f Dockerfile.simple -t ${IMAGE_NAME} .; then
+        print_success "Docker image built successfully"
+        return 0
+    else
+        print_error "Failed to build Docker image"
+        return 1
+    fi
 }
 
 # Function to run container
 run_container() {
     print_status "Starting Chrome webtop container..."
-    docker run -d \
+    
+    # Check if container already exists
+    if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+        print_warning "Container ${CONTAINER_NAME} already exists. Stopping and removing it..."
+        docker stop ${CONTAINER_NAME} >/dev/null 2>&1 || true
+        docker rm ${CONTAINER_NAME} >/dev/null 2>&1 || true
+    fi
+    
+    # Try to run the container
+    if docker run -d \
         --name ${CONTAINER_NAME} \
         -p ${HOST_PORT}:${PORT} \
         --shm-size=512mb \
         --restart=unless-stopped \
-        ${IMAGE_NAME}
-    
-    print_success "Container started successfully"
+        ${IMAGE_NAME}; then
+        
+        print_success "Container started successfully"
+        return 0
+    else
+        print_error "Failed to start container"
+        return 1
+    fi
 }
 
 # Function to wait for services to be ready
 wait_for_services() {
     print_status "Waiting for services to start..."
     
-    for i in {1..30}; do
+    # Check if container is running first
+    if ! docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+        print_warning "Container ${CONTAINER_NAME} is not running. Attempting to start it..."
+        docker start ${CONTAINER_NAME} >/dev/null 2>&1 || true
+        sleep 5
+    fi
+    
+    # Wait for web service to be accessible
+    for i in {1..45}; do  # Increased timeout to 90 seconds
         if curl -s http://localhost:${HOST_PORT} >/dev/null 2>&1; then
             print_success "Services are ready!"
             return 0
@@ -343,7 +409,10 @@ wait_for_services() {
         echo -n "."
     done
     
-    print_warning "Services may still be starting. Check logs with: docker logs ${CONTAINER_NAME}"
+    # If we get here, services aren't responding, but we'll show logs and continue
+    print_warning "Services may still be starting. Here are the latest logs:"
+    docker logs --tail 20 ${CONTAINER_NAME} || true
+    print_warning "Check full logs with: docker logs ${CONTAINER_NAME}"
 }
 
 # Function to display access information
@@ -390,14 +459,21 @@ main() {
         print_warning "Running as root is not recommended. Consider running as a regular user."
     fi
     
-    # Install Docker if needed
-    install_docker
+    # Create a temporary directory for our files
+    TEMP_DIR=$(mktemp -d)
+    cd "$TEMP_DIR" || {
+        print_error "Failed to create temporary directory"
+        # Continue anyway in the current directory
+    }
     
-    # Start Docker daemon
-    start_docker
+    # Install Docker if needed (continue on error)
+    install_docker || print_warning "Docker installation may have issues, but we'll try to continue"
+    
+    # Start Docker daemon (continue on error)
+    start_docker || print_warning "Docker may not be running properly, but we'll try to continue"
     
     # Clean up any existing container
-    cleanup_existing
+    cleanup_existing || print_warning "Failed to clean up existing container, but continuing"
     
     # Create all necessary files
     create_dockerfile
@@ -405,13 +481,36 @@ main() {
     create_vnc_script
     create_chrome_script
     
-    # Build and run
-    build_image
-    run_container
+    # Build and run (with error handling)
+    if ! build_image; then
+        print_error "Failed to build Docker image"
+        print_warning "Trying to continue anyway - checking if image exists"
+        if ! docker images | grep -q "${IMAGE_NAME}"; then
+            print_error "Image does not exist and build failed. Cannot continue."
+            exit 1
+        fi
+    fi
+    
+    if ! run_container; then
+        print_error "Failed to start container"
+        print_warning "Checking if container exists and trying to start it"
+        if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+            docker start ${CONTAINER_NAME} || true
+        else
+            print_error "Container does not exist and could not be created"
+            exit 1
+        fi
+    fi
     
     # Wait for services and show info
     wait_for_services
     show_access_info
+    
+    # Clean up temporary directory if we created one
+    if [[ -d "$TEMP_DIR" && "$TEMP_DIR" != "$(pwd)" ]]; then
+        cd - >/dev/null 2>&1 || true
+        rm -rf "$TEMP_DIR" >/dev/null 2>&1 || true
+    fi
     
     print_success "Installation completed successfully!"
 }
