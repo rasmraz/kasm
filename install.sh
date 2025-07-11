@@ -361,6 +361,31 @@ build_image() {
     fi
 }
 
+# Function to check if a port is available
+check_port_available() {
+    local port=$1
+    
+    # Try different methods to check port availability
+    if command_exists netstat; then
+        if netstat -tuln | grep -q ":${port}[[:space:]]"; then
+            return 1  # Port is in use
+        fi
+    elif command_exists ss; then
+        if ss -tuln | grep -q ":${port}[[:space:]]"; then
+            return 1  # Port is in use
+        fi
+    elif command_exists lsof; then
+        if lsof -i ":${port}" >/dev/null 2>&1; then
+            return 1  # Port is in use
+        fi
+    else
+        # If we can't check, assume it's available but warn the user
+        print_warning "Cannot check if port ${port} is available. Proceeding anyway."
+    fi
+    
+    return 0  # Port is available
+}
+
 # Function to run container
 run_container() {
     print_status "Starting Chrome webtop container..."
@@ -372,6 +397,25 @@ run_container() {
         docker rm ${CONTAINER_NAME} >/dev/null 2>&1 || true
     fi
     
+    # Check if the port is available
+    if ! check_port_available ${HOST_PORT}; then
+        print_warning "Port ${HOST_PORT} is already in use. Trying to find an available port..."
+        
+        # Try to find an available port starting from HOST_PORT+1
+        for ((p=${HOST_PORT}+1; p<${HOST_PORT}+100; p++)); do
+            if check_port_available ${p}; then
+                print_warning "Using port ${p} instead of ${HOST_PORT}"
+                HOST_PORT=${p}
+                break
+            fi
+        done
+        
+        # If we still couldn't find an available port, warn but continue
+        if ! check_port_available ${HOST_PORT}; then
+            print_warning "Could not find an available port. Trying to continue with port ${HOST_PORT}..."
+        fi
+    fi
+    
     # Try to run the container
     if docker run -d \
         --name ${CONTAINER_NAME} \
@@ -380,7 +424,7 @@ run_container() {
         --restart=unless-stopped \
         ${IMAGE_NAME}; then
         
-        print_success "Container started successfully"
+        print_success "Container started successfully on port ${HOST_PORT}"
         return 0
     else
         print_error "Failed to start container"
@@ -417,15 +461,25 @@ wait_for_services() {
 
 # Function to display access information
 show_access_info() {
+    # Get the public IP address if available
+    PUBLIC_IP=$(curl -s https://api.ipify.org 2>/dev/null || echo "localhost")
+    
+    # Get the container status
+    CONTAINER_STATUS=$(docker ps --filter "name=${CONTAINER_NAME}" --format "{{.Status}}" 2>/dev/null || echo "Unknown")
+    
     echo
     echo "=============================================="
     echo -e "${GREEN}Chrome Webtop Installation Complete!${NC}"
     echo "=============================================="
     echo
     echo -e "${BLUE}Access Information:${NC}"
-    echo "  Local URL:  http://localhost:${HOST_PORT}"
-    echo "  Container:  ${CONTAINER_NAME}"
-    echo "  Image:      ${IMAGE_NAME}"
+    echo "  Local URL:      http://localhost:${HOST_PORT}"
+    if [[ "$PUBLIC_IP" != "localhost" ]]; then
+        echo "  External URL:   http://${PUBLIC_IP}:${HOST_PORT} (if port is forwarded)"
+    fi
+    echo "  Container:      ${CONTAINER_NAME}"
+    echo "  Image:          ${IMAGE_NAME}"
+    echo "  Current Status: ${CONTAINER_STATUS}"
     echo
     echo -e "${BLUE}Usage:${NC}"
     echo "  1. Open the URL in your web browser"
@@ -444,6 +498,8 @@ show_access_info() {
     echo "  If connection fails, wait a few more seconds for services to fully start"
     echo "  Check container status: docker ps"
     echo "  View detailed logs: docker logs -f ${CONTAINER_NAME}"
+    echo "  Check if port ${HOST_PORT} is already in use: netstat -tuln | grep ${HOST_PORT}"
+    echo "  Verify Docker is running: docker info"
     echo
 }
 
