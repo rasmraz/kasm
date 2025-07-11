@@ -59,32 +59,33 @@
             <p>A minimal desktop environment with Google Chrome is now running in a Docker container.</p>
         </div>
 
-        <a href="https://work-1-hefnmwebvwfojncq.prod-runtime.all-hands.dev" class="access-link" target="_blank">
+        <a href="http://localhost:12000" class="access-link" target="_blank">
             🚀 Access Chrome Webtop
         </a>
 
         <div class="credentials">
-            <h3>🔐 Login Credentials</h3>
-            <p><strong>Password:</strong> password</p>
+            <h3>🔐 Connection Info</h3>
+            <p><strong>No password required</strong> - Click "Connect" in the noVNC interface</p>
         </div>
 
         <div class="info">
             <h3>📋 Features</h3>
             <ul>
-                <li>Google Chrome browser with security policies</li>
-                <li>Minimal XFCE desktop environment</li>
-                <li>Web-based VNC access</li>
-                <li>File upload/download capabilities</li>
-                <li>Restricted file chooser for security</li>
-                <li>No desktop panel for minimal attack surface</li>
+                <li>Google Chrome browser</li>
+                <li>Fluxbox desktop environment</li>
+                <li>Web-based VNC access via noVNC</li>
+                <li>X11VNC server for remote access</li>
+                <li>Virtual framebuffer (Xvfb)</li>
+                <li>Containerized for security and isolation</li>
             </ul>
         </div>
 
         <div class="info">
             <h3>🛠️ Container Status</h3>
-            <p>Container ID: <code>chrome-webtop</code></p>
+            <p>Container Name: <code>chrome-webtop</code></p>
             <p>Port Mapping: <code>12000:6901</code></p>
-            <p>Base Image: <code>kasmweb/core-ubuntu-jammy:develop</code></p>
+            <p>Base Image: <code>chrome-webtop-simple</code></p>
+            <p>Status: <span style="color: green;">✅ Running</span></p>
         </div>
     </div>
 </body>

@@ -6,10 +6,11 @@ The Chrome webtop is now successfully running and accessible via the web interfa
 
 ## Access Information
 
-- **URL**: https://work-1-hefnmwebvwfojncq.prod-runtime.all-hands.dev
-- **Container**: chrome-webtop-simple
+- **URL**: http://localhost:12000
+- **Container**: chrome-webtop
+- **Image**: chrome-webtop-simple
 - **Port**: 12000
-- **Status**: Connected and functional
+- **Status**: ✅ Running and functional
 
 ## What's Working
 
